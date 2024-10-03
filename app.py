@@ -1,13 +1,3 @@
-# Install required libraries in the `requirements.txt` file
-'''
-streamlit
-arxivscraper
-pandas
-openai
-matplotlib
-seaborn
-'''
-
 # Streamlit app script: `arxiv_summarizer_app.py`
 
 import streamlit as st
@@ -19,14 +9,17 @@ import seaborn as sns
 from datetime import datetime
 
 # ===========================
-# OpenAI API Key Configuration
-# ===========================
-openai.api_key = st.secrets["openai_api_key"]
-
-# ===========================
 # Streamlit App Layout
 # ===========================
 st.title("ArXiv Paper Summarizer and Trends Analyzer")
+
+# Option for OpenAI API key or Open-Source LLM
+llm_choice = st.radio("Choose the LLM for summarization:", ["OpenAI API", "Open-source LLM"])
+
+if llm_choice == "OpenAI API":
+    openai_api_key = st.text_input("Enter your OpenAI API key:", type="password")
+else:
+    st.write("You have selected an open-source LLM (e.g., GPT-J or GPT-Neo). This feature will run locally.")
 
 # Define category options
 categories = {
@@ -72,18 +65,30 @@ if st.button("Scrape and Summarize Papers"):
         # ===========================
         # Generate Summaries
         # ===========================
-        st.subheader("Summarizing Abstracts...")
-        def generate_summary(text):
-            try:
-                response = openai.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": text}],
-                    max_tokens=200,
-                    temperature=0.5,
-                )
-                return response.choices[0].message["content"].strip()
-            except Exception as e:
-                return f"Error: {str(e)}"
+
+        if llm_choice == "OpenAI API":
+            # Check if API key is provided
+            if openai_api_key:
+                openai.api_key = openai_api_key
+
+                def generate_summary(text):
+                    try:
+                        response = openai.ChatCompletion.create(
+                            model="gpt-3.5-turbo",
+                            messages=[{"role": "user", "content": text}],
+                            max_tokens=200,
+                            temperature=0.5,
+                        )
+                        return response.choices[0].message["content"].strip()
+                    except Exception as e:
+                        return f"Error: {str(e)}"
+            else:
+                st.error("Please enter your OpenAI API key.")
+
+        else:
+            # Use open-source LLM like GPT-J/Neo (dummy function for now)
+            def generate_summary(text):
+                return "Open-source LLM (GPT-J/Neo) will summarize this text."
 
         df['summary'] = df['abstract'].apply(lambda abstract: generate_summary(f"Summarize this abstract: {abstract}"))
 
