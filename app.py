@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
-import openai
 import arxivscraper
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
+from transformers import pipeline
+import openai
 
 # ===========================
 # Streamlit App Layout
@@ -14,10 +15,15 @@ st.title("ArXiv Paper Summarizer and Trends Analyzer")
 # Option for OpenAI API key or Open-Source LLM
 llm_choice = st.radio("Choose the LLM for summarization:", ["OpenAI API", "Open-source LLM"])
 
+# Initialize Open-Source LLM if selected
+if llm_choice == "Open-source LLM":
+    # Load the summarization pipeline from Hugging Face's transformers (e.g., GPT-J or GPT-Neo)
+    summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
+    st.write("Using an open-source LLM (DistilBART model from Hugging Face).")
+
+# If OpenAI is selected, the user must provide the API key
 if llm_choice == "OpenAI API":
     openai_api_key = st.text_input("Enter your OpenAI API key:", type="password")
-else:
-    st.write("You have selected an open-source LLM (e.g., GPT-J or GPT-Neo). This feature will run locally.")
 
 # Define category options
 categories = {
@@ -61,46 +67,58 @@ if st.button("Scrape and Summarize Papers"):
         st.write(df[['title', 'abstract']])
 
         # ===========================
-        # Generate Summaries
+        # Generate Summaries per Sub-Field
         # ===========================
 
-        if llm_choice == "OpenAI API":
-            # Check if API key is provided
-            if openai_api_key:
+        def generate_summary_openai(abstracts):
+            """Use OpenAI API to generate a summary for a list of abstracts."""
+            combined_abstracts = "\n\n".join(abstracts)
+            prompt = f"Summarize the following research abstracts into a brief summary focusing on the latest trends and advancements:\n\n{combined_abstracts}\n\nSummary:"
+            try:
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=400,
+                    temperature=0.5,
+                )
+                return response.choices[0].message["content"].strip()
+            except Exception as e:
+                return f"Error: {str(e)}"
+
+        def generate_summary_opensource(abstracts):
+            """Use open-source LLM (e.g., GPT-J or GPT-Neo) to generate a summary."""
+            combined_abstracts = " ".join(abstracts)
+            try:
+                summary = summarizer(combined_abstracts, max_length=200, min_length=30, do_sample=False)
+                return summary[0]["summary_text"]
+            except Exception as e:
+                return f"Error: {str(e)}"
+
+        # Group papers by sub-categories and generate summaries
+        df['sub_fields'] = df['categories'].apply(lambda x: x.split())
+        exploded_df = df.explode('sub_fields')
+
+        summaries = {}
+
+        for sub_field in exploded_df['sub_fields'].unique():
+            abstracts = exploded_df[exploded_df['sub_fields'] == sub_field]['abstract'].tolist()
+            
+            if llm_choice == "OpenAI API" and openai_api_key:
                 openai.api_key = openai_api_key
-
-                def generate_summary(text):
-                    try:
-                        response = openai.ChatCompletion.create(
-                            model="gpt-3.5-turbo",
-                            messages=[{"role": "user", "content": text}],
-                            max_tokens=200,
-                            temperature=0.5,
-                        )
-                        return response.choices[0].message["content"].strip()
-                    except Exception as e:
-                        return f"Error: {str(e)}"
-            else:
-                st.error("Please enter your OpenAI API key.")
-
-        else:
-            # Use open-source LLM like GPT-J/Neo (dummy function for now)
-            def generate_summary(text):
-                return "Open-source LLM (GPT-J/Neo) will summarize this text."
-
-        df['summary'] = df['abstract'].apply(lambda abstract: generate_summary(f"Summarize this abstract: {abstract}"))
-
-        # Display the summaries
-        st.write(df[['title', 'summary']])
+                summaries[sub_field] = generate_summary_openai(abstracts)
+            elif llm_choice == "Open-source LLM":
+                summaries[sub_field] = generate_summary_opensource(abstracts)
+        
+        # Display the summaries for each sub-category
+        for sub_field, summary in summaries.items():
+            st.subheader(f"Summary for {sub_field}")
+            st.write(summary)
 
         # ===========================
         # Analyze Sub-Field Trends
         # ===========================
         st.subheader("Trends in Sub-Fields")
         
-        df['sub_fields'] = df['categories'].apply(lambda x: x.split())
-        exploded_df = df.explode('sub_fields')
-
         # Plot top sub-fields by frequency
         top_sub_fields = exploded_df['sub_fields'].value_counts().head(10)
         plt.figure(figsize=(10, 6))
