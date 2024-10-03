@@ -1,5 +1,3 @@
-# Streamlit app script: `arxiv_summarizer_app.py`
-
 import streamlit as st
 import pandas as pd
 import openai
@@ -116,5 +114,3 @@ if st.button("Scrape and Summarize Papers"):
         st.subheader("Emerging Fields and Trends")
         emerging_fields = exploded_df.groupby('sub_fields')['title'].count().reset_index().sort_values(by='title', ascending=False)
         st.write(emerging_fields.head(10))
-
-# Run this with `streamlit run arxiv_summarizer_app.py`
