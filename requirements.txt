@@ -1,0 +1,6 @@
+streamlit
+arxivscraper
+pandas
+openai==0.28
+matplotlib
+seaborn
